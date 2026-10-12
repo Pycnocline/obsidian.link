@@ -167,7 +167,7 @@ function loadPlugin(app: MockApp) {
   };
   const exports: Record<string, unknown> = {};
   const module = { exports };
-  runInNewContext(runtimeCode, {
+  runInNewContext(runtimeCode!, {
     module, exports,
     require: (name: string) => {
       if (name !== "obsidian") throw new Error("unknown module: " + name);
