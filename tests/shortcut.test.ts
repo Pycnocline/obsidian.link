@@ -58,3 +58,27 @@ test("JSON state clones are independent", () => {
   assert.equal(value.nested.enabled, true);
   assert.equal(targetDescription({ kind: "view", viewType: "my-view", state: {} }), "视图：my-view");
 });
+
+test("covers are optional, compatible with old .link files and validated", () => {
+  const target = { kind: "view" as const, viewType: "wallos-view", state: {} };
+  const previous = parseShortcut(serializeShortcut(target));
+  assert.equal(previous.cover, undefined);
+
+  const filename = "_assets/Finance/封面.WebP";
+  const next = parseShortcut(serializeShortcut(target, filename));
+  assert.equal(next.cover, filename);
+  assert.deepEqual(next.target, target);
+
+  for (const cover of [
+    "https://example.com/cover.jpg",
+    "../other.png",
+    "image.md",
+    "/absolute.jpg",
+    "images/bad\\\\path.png",
+    ""
+  ]) {
+    assert.throws(() => parseShortcut(JSON.stringify({
+      format: "obsidian-link", version: 1, cover, target
+    })));
+  }
+});

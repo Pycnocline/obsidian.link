@@ -2,6 +2,7 @@ import {
   App, FuzzySuggestModal, Modal, Notice, Setting, TFile
 } from "obsidian";
 import type ObsidianLinkPlugin from "./main";
+import { FolderPickerModal, ImagePickerModal } from "./path-picker";
 import { SHORTCUT_EXTENSION, SHORTCUT_VIEW_TYPE, ShortcutTarget, targetDescription } from "./shortcut";
 
 export interface TargetOption {
@@ -130,19 +131,22 @@ export class ShortcutEditorModal extends Modal {
   private targetLabel: string;
   private errorEl: HTMLElement | null = null;
   private saving = false;
+  private cover: string | null;
 
   constructor(
     app: App,
     private readonly plugin: ObsidianLinkPlugin,
     initial: TargetOption,
     folder: string,
-    private readonly existing: TFile | null = null
+    private readonly existing: TFile | null = null,
+    initialCover: string | null = null
   ) {
     super(app);
     this.target = initial.target;
     this.targetLabel = initial.label;
     this.filename = existing?.basename ?? initial.label;
     this.folder = folder;
+    this.cover = initialCover;
   }
 
   onOpen(): void {
@@ -159,16 +163,44 @@ export class ShortcutEditorModal extends Modal {
       .setValue(this.filename)
       .onChange((value) => { this.filename = value; }));
 
-    new Setting(this.contentEl).setName("保存位置").setDesc("Vault 内文件夹路径；留空为根目录")
+    new Setting(this.contentEl).setName("保存位置").setDesc("从 Vault 中选取文件夹，也可以手动输入新路径")
       .addText((text) => text
         .setPlaceholder("例如 应用/快捷方式")
         .setValue(this.folder)
-        .onChange((value) => { this.folder = value; }));
+        .onChange((value) => { this.folder = value; }))
+      .addButton((button) => button.setButtonText("选择文件夹").onClick(() => {
+        new FolderPickerModal(this.app, (folder) => {
+          this.folder = folder;
+          this.renderEditor();
+        }).open();
+      }));
 
     this.contentEl.createEl("div", {
       cls: "obsidian-link-target",
       text: this.targetLabel + " — " + targetDescription(this.target)
     });
+
+    const cover = new Setting(this.contentEl).setName("封面图片")
+      .setDesc(this.cover || "选择 Vault 内的图片，在 Notebook Navigator 缩略图区域显示")
+      .addButton((button) => button.setButtonText("选择图片").onClick(() => {
+        new ImagePickerModal(this.app, (path) => {
+          this.cover = path;
+          this.renderEditor();
+        }).open();
+      }));
+    if (this.cover) {
+      cover.addButton((button) => button.setButtonText("清除").onClick(() => {
+        this.cover = null;
+        this.renderEditor();
+      }));
+      const source = this.app.vault.getAbstractFileByPath(this.cover);
+      if (source instanceof TFile) {
+        const preview = this.contentEl.createDiv({ cls: "obsidian-link-cover-preview" });
+        const image = preview.createEl("img");
+        image.src = this.app.vault.getResourcePath(source);
+        image.alt = "快捷方式封面预览";
+      }
+    }
 
     new Setting(this.contentEl).setName("目标界面").addButton((button) => button
       .setButtonText("重新选择")
@@ -205,7 +237,7 @@ export class ShortcutEditorModal extends Modal {
     this.saving = true;
     try {
       const path = await this.plugin.saveShortcut(
-        this.filename, this.folder, this.target, this.existing
+        this.filename, this.folder, this.target, this.existing, this.cover
       );
       new Notice("快捷方式已保存：" + path);
       this.close();

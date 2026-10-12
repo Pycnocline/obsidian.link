@@ -7,9 +7,12 @@ import {
   registeredViewTypes, viewExists
 } from "./api";
 import { ShortcutEditorModal, TargetOption, TargetPickerModal } from "./dialogs";
+import { NotebookNavigatorAppearance } from "./appearance";
+import { TabShortcutMenu } from "./tab-menu";
+import { DEFAULT_SETTINGS, ObsidianLinkSettingTab, ObsidianLinkSettings } from "./settings";
 import {
   cloneJsonRecord, normalizeFolder, parseShortcut, serializeShortcut,
-  shortcutFilePath, SHORTCUT_EXTENSION, SHORTCUT_VIEW_TYPE, ShortcutTarget
+  shortcutFilePath, SHORTCUT_EXTENSION, SHORTCUT_VIEW_TYPE, ShortcutTarget, validCoverPath
 } from "./shortcut";
 
 function failureMessage(error: unknown): string {
@@ -122,8 +125,19 @@ class ShortcutOpenModal extends FuzzySuggestModal<TFile> {
 export default class ObsidianLinkPlugin extends Plugin {
   private navigatorMenus: object | null = null;
   private navigatorDisposers: Array<() => void> = [];
+  settings: ObsidianLinkSettings = { ...DEFAULT_SETTINGS };
+  private appearance!: NotebookNavigatorAppearance;
+  private tabMenu!: TabShortcutMenu;
 
-  onload(): void {
+  async onload(): Promise<void> {
+    const saved: unknown = await this.loadData();
+    if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+      const value = (saved as Record<string, unknown>).hideLinkExtension;
+      if (typeof value === "boolean") this.settings.hideLinkExtension = value;
+    }
+    this.appearance = new NotebookNavigatorAppearance(this.app);
+    this.appearance.setHideExtension(this.settings.hideLinkExtension);
+    this.addSettingTab(new ObsidianLinkSettingTab(this.app, this));
     this.registerView(SHORTCUT_VIEW_TYPE, (leaf) => new LinkFileView(leaf, this));
     this.registerExtensions([SHORTCUT_EXTENSION], SHORTCUT_VIEW_TYPE);
 
@@ -145,13 +159,30 @@ export default class ObsidianLinkPlugin extends Plugin {
 
     this.addRibbonIcon("link", "创建界面快捷方式", () => this.pickTarget());
 
-    this.registerEvent(this.app.workspace.on("file-menu", (menu, file) => {
-      this.addNativeFileMenu(menu, file);
+    this.tabMenu = new TabShortcutMenu(this, (leaf) => this.captureLeafView(leaf));
+    this.tabMenu.register();
+    this.registerEvent(this.app.workspace.on("file-menu", (menu, file, source, leaf) => {
+      if (!this.tabMenu.onFileMenu(menu, source, leaf) || !leaf) {
+        this.addNativeFileMenu(menu, file);
+      }
+    }));
+
+    this.registerEvent(this.app.vault.on("create", (file) => this.appearance.invalidate(file)));
+    this.registerEvent(this.app.vault.on("modify", (file) => this.appearance.invalidate(file)));
+    this.registerEvent(this.app.vault.on("delete", (file) => this.appearance.invalidate(file)));
+    this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      this.appearance.invalidate(file, oldPath);
+    }));
+    this.registerEvent(this.app.workspace.on("window-open", (_win, window) => {
+      this.appearance.attach(window.document);
     }));
     this.registerEvent(this.app.workspace.on("layout-change", () => {
       this.tryRegisterNavigatorMenus();
     }));
-    this.app.workspace.onLayoutReady(() => this.tryRegisterNavigatorMenus());
+    this.app.workspace.onLayoutReady(() => {
+      this.tryRegisterNavigatorMenus();
+      if (typeof document !== "undefined") this.appearance.attach(document);
+    });
 
     // Some plugins load their API after layout-ready. Poll only during startup;
     // layout-change handles subsequent plugin enable/disable events.
@@ -166,6 +197,13 @@ export default class ObsidianLinkPlugin extends Plugin {
 
   onunload(): void {
     this.clearNavigatorMenus();
+    this.appearance?.stop();
+  }
+
+  async setHideLinkExtension(enabled: boolean): Promise<void> {
+    this.settings.hideLinkExtension = enabled;
+    this.appearance.setHideExtension(enabled);
+    await this.saveData(this.settings);
   }
 
   private clearNavigatorMenus(): void {
@@ -247,6 +285,10 @@ export default class ObsidianLinkPlugin extends Plugin {
       new Notice("当前没有可保存的界面");
       return;
     }
+    this.captureLeafView(leaf);
+  }
+
+  private captureLeafView(leaf: WorkspaceLeaf): void {
     const view = leaf.getViewState();
     if (!view.type || view.type === "empty" || view.type === SHORTCUT_VIEW_TYPE) {
       new Notice("当前界面不能作为快捷方式目标");
@@ -257,9 +299,9 @@ export default class ObsidianLinkPlugin extends Plugin {
         kind: "view", viewType: view.type, state: cloneJsonRecord(view.state)
       };
       const label = leaf.view.getDisplayText() || view.type;
-      const option: TargetOption = { group: "当前界面", label, target };
-      new ShortcutEditorModal(this.app, this, option,
-        sourceFolder(this.app.workspace.getActiveFile())).open();
+      const option: TargetOption = { group: "指定标签页", label, target };
+      const viewFile = leaf.view instanceof FileView ? leaf.view.file : null;
+      new ShortcutEditorModal(this.app, this, option, sourceFolder(viewFile)).open();
     } catch (error) {
       new Notice("无法记录当前界面：" + failureMessage(error));
     }
@@ -309,8 +351,11 @@ export default class ObsidianLinkPlugin extends Plugin {
 
   async editShortcut(file: TFile): Promise<void> {
     let target: ShortcutTarget;
+    let cover: string | null = null;
     try {
-      target = parseShortcut(await this.app.vault.read(file)).target;
+      const document = parseShortcut(await this.app.vault.read(file));
+      target = document.target;
+      cover = document.cover ?? null;
     } catch (error) {
       new Notice("原快捷方式需要修复：" + failureMessage(error));
       this.pickRepairTarget(file);
@@ -319,7 +364,7 @@ export default class ObsidianLinkPlugin extends Plugin {
     const option: TargetOption = {
       group: "现有快捷方式", label: file.basename, target
     };
-    new ShortcutEditorModal(this.app, this, option, sourceFolder(file), file).open();
+    new ShortcutEditorModal(this.app, this, option, sourceFolder(file), file, cover).open();
   }
 
   private pickRepairTarget(file: TFile): void {
@@ -346,11 +391,18 @@ export default class ObsidianLinkPlugin extends Plugin {
   }
 
   async saveShortcut(
-    filename: string, folderInput: string, target: ShortcutTarget, existing: TFile | null
+    filename: string, folderInput: string, target: ShortcutTarget, existing: TFile | null,
+    cover: string | null = null
   ): Promise<string> {
     const folder = normalizeFolder(folderInput);
     const path = shortcutFilePath(folder, filename);
-    const data = serializeShortcut(target);
+    if (cover) {
+      const image = this.app.vault.getAbstractFileByPath(cover);
+      if (!validCoverPath(cover) || !(image instanceof TFile)) {
+        throw new Error("封面图片不存在或格式不支持：" + cover);
+      }
+    }
+    const data = serializeShortcut(target, cover ?? undefined);
     const occupying = this.app.vault.getAbstractFileByPath(path);
     if (occupying && occupying !== existing) {
       throw new Error("已有同名文件：" + path);
@@ -362,6 +414,7 @@ export default class ObsidianLinkPlugin extends Plugin {
     } else {
       await this.app.vault.create(path, data);
     }
+    this.appearance.invalidate(this.app.vault.getAbstractFileByPath(path) ?? undefined);
     return path;
   }
 

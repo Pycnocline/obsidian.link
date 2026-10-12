@@ -7,6 +7,10 @@
 - 将当前打开的 Obsidian 视图或插件视图保存为 .link 文件。
 - 从已打开的视图、已注册的视图类型、插件命令、Vault 文件中选择目标；也可手动输入视图类型。
 - 点击 .link 自动打开目标；右键创建与编辑；支持原生文件管理器及 Notebook Navigator 的独立菜单 API。
+- 在任意已打开标签页的右键菜单或右上角「···」菜单选择「将此标签页添加为快捷方式」，直接捕获该标签页的类型和状态，不依赖当前活动标签页。
+- 选择保存目录或 Vault 内图片时可点击搜索选择，无需手动输入路径。
+- 可为快捷方式设置 Vault 内封面图片，Notebook Navigator 列表使用自身主题的缩略图尺寸展示；已有快捷方式可单独编辑或清除封面。
+- 插件设置可隐藏 Notebook Navigator 文件列表中的 .link 后缀（默认隐藏），不修改实际文件名。
 - 文件是可移植 UTF-8 JSON 文本，位于 Vault 任意目录，可随 Synchrun 等同步工具同步。
 
 ## 安装
@@ -16,8 +20,10 @@
 ## 使用
 
 1. 打开命令面板，执行“Obsidian Link: 为当前界面创建快捷方式”，或“创建界面快捷方式”。
-2. 选择目标，填写文件名和目录，保存。
-3. 在 Obsidian 文件浏览器或 Notebook Navigator 中点击新建的 .link 文件。
+2. 选择目标，填写文件名，点击「选择文件夹」选取保存位置；可以点击「选择图片」设置封面。
+3. 保存后在 Obsidian 文件浏览器或 Notebook Navigator 中点击新建的 .link 文件。
+4. 也可直接在任意标签页右键菜单或标签页右上角三点菜单中选择「将此标签页添加为快捷方式」。
+5. 在「设置 → 第三方插件 → Obsidian Link」中开关隐藏 .link 后缀。
 
 .link 文件示例：
 
@@ -25,6 +31,7 @@
 {
   "format": "obsidian-link",
   "version": 1,
+  "cover": "_assets/Wallos.png",
   "target": { "kind": "view", "viewType": "some-plugin-view", "state": {} }
 }
 ~~~
@@ -38,6 +45,9 @@
 - .link 文件保存视图状态，可能含其他插件的私有字段，请勿将包含敏感状态的文件发布到不可信位置。
 - 手机端要求目标插件支持移动端。找不到目标时显示可修复的错误界面。
 - Notebook Navigator 的文件类型过滤请选择“Supported (opens in Obsidian)”或“All”；若前者过滤 .link，请改用 All。
+- Notebook Navigator 没有针对 .link 的公开封面 API，因此封面由本插件装饰 Notebook Navigator 文件列表行，不会修改该插件的内部数据库。封面文件需存在于同一 Vault，跨设备显示依赖图片本身被同步。
+- 隐藏扩展名仅影响 Notebook Navigator 的文件列表；文件的真实后缀始终保留，以确保 Obsidian 能识别该快捷方式。
+- 标签页右键支持 file-menu；对于没有关联文件的插件标签页，采用 Obsidian 的工作区标签菜单事件和兼容钩子。非公开菜单 API 在未来 Obsidian 更新后可能变化。
 - 若其他插件同时注册 .link 扩展名，请解除冲突。
 
 ## 开发

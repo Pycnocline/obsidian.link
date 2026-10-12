@@ -15,6 +15,7 @@ export interface ShortcutDocument {
   format: typeof SHORTCUT_FORMAT;
   version: typeof SHORTCUT_VERSION;
   target: ShortcutTarget;
+  cover?: string;
 }
 
 export function isRecord(value: unknown): value is JsonRecord {
@@ -34,6 +35,15 @@ export function validVaultPath(path: string): boolean {
     !path.includes("\\") &&
     !path.split("/").some((part) => part === "" || part === "." || part === "..") &&
     !/[\u0000-\u001f]/.test(path);
+}
+
+export const COVER_EXTENSIONS = new Set([
+  "png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "avif", "heic", "heif"
+]);
+
+export function validCoverPath(path: string): boolean {
+  const extension = path.split(".").pop()?.toLowerCase();
+  return validVaultPath(path) && extension !== undefined && COVER_EXTENSIONS.has(extension);
 }
 
 export function normalizeFolder(folder: string): string {
@@ -69,6 +79,11 @@ export function parseShortcut(raw: string): ShortcutDocument {
   if (!isRecord(parsed) || parsed.format !== SHORTCUT_FORMAT || parsed.version !== SHORTCUT_VERSION) {
     throw new Error("不支持的快捷方式文件格式或版本");
   }
+  const cover = parsed.cover;
+  if (cover !== undefined && (typeof cover !== "string" || !validCoverPath(cover))) {
+    throw new Error("封面必须指向 Vault 中支持的图片文件");
+  }
+  const withCover = cover === undefined ? {} : { cover };
   const target = parsed.target;
   if (!isRecord(target)) throw new Error("快捷方式缺少目标");
   if (target.kind === "view") {
@@ -85,6 +100,7 @@ export function parseShortcut(raw: string): ShortcutDocument {
     return {
       format: SHORTCUT_FORMAT,
       version: SHORTCUT_VERSION,
+      ...withCover,
       target: {
         kind: "view",
         viewType: target.viewType,
@@ -100,6 +116,7 @@ export function parseShortcut(raw: string): ShortcutDocument {
     return {
       format: SHORTCUT_FORMAT,
       version: SHORTCUT_VERSION,
+      ...withCover,
       target: { kind: "command", commandId: target.commandId }
     };
   }
@@ -111,14 +128,15 @@ export function parseShortcut(raw: string): ShortcutDocument {
     return {
       format: SHORTCUT_FORMAT,
       version: SHORTCUT_VERSION,
+      ...withCover,
       target: { kind: "file", path: target.path }
     };
   }
   throw new Error("未知的快捷方式目标类型");
 }
 
-export function serializeShortcut(target: ShortcutTarget): string {
-  const raw = JSON.stringify({ format: SHORTCUT_FORMAT, version: SHORTCUT_VERSION, target }, null, 2) + "\n";
+export function serializeShortcut(target: ShortcutTarget, cover?: string): string {
+  const raw = JSON.stringify({ format: SHORTCUT_FORMAT, version: SHORTCUT_VERSION, target, ...(cover ? { cover } : {}) }, null, 2) + "\n";
   parseShortcut(raw);
   return raw;
 }

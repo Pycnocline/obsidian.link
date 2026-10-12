@@ -1,7 +1,7 @@
 {
   "id": "obsidian-link",
   "name": "Obsidian Link",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "1.7.2",
   "description": "Direct .link shortcuts to Obsidian views, plugin interfaces, commands and files.",
   "author": "Pycnocline",

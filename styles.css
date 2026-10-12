@@ -29,3 +29,53 @@
   margin-right: 0.5em;
   margin-bottom: 0.5em;
 }
+
+/* Only hide the .link suffix that Notebook Navigator appends to file names. */
+body.obsidian-link-hide-extension
+  [data-drag-type="file"][data-path$=".link"] .nn-file-ext-suffix {
+  display: none !important;
+}
+
+/* Preserve Notebook Navigator's own thumbnail size, spacing and theme. */
+[data-drag-type="file"] .nn-file-thumbnail.obsidian-link-has-cover {
+  position: relative;
+  overflow: hidden;
+}
+[data-drag-type="file"] .nn-file-thumbnail.obsidian-link-has-cover
+  > .nn-file-extension-badge {
+  display: none !important;
+}
+[data-drag-type="file"] .nn-file-thumbnail > .obsidian-link-cover-img {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+}
+.obsidian-link-cover-preview {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: var(--size-4-3);
+}
+.obsidian-link-cover-preview img {
+  display: block;
+  max-width: min(100%, 18rem);
+  max-height: 9rem;
+  object-fit: contain;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+}
+
+/* .link has no native thumbnail slot in Notebook Navigator. */
+[data-drag-type="file"] .nn-file-thumbnail.obsidian-link-owned-thumb {
+  flex: 0 0 auto;
+  align-self: center;
+}
+[data-drag-type="file"].nn-compact .nn-file-thumbnail.obsidian-link-owned-thumb {
+  width: 30px;
+  height: 30px;
+}
